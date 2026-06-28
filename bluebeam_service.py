@@ -67,3 +67,54 @@ class BluebeamService:
                 for doc in app.Documents
             ]
         )
+
+    def list_markups(self, path: str, page) -> list:
+        def _do(app):
+            doc = app.GetDocument(path)
+            return [
+                {
+                    "id": m.ID,
+                    "type": m.Type,
+                    "page": m.PageNumber,
+                    "author": m.Author,
+                    "subject": m.Subject,
+                    "comment": m.Comments,
+                    "date": m.Date,
+                    "x": m.Rect.X,
+                    "y": m.Rect.Y,
+                }
+                for m in doc.Markups
+                if page is None or m.PageNumber == page
+            ]
+        return self._call(_do)
+
+    def add_text_box(self, path: str, page: int, x: float, y: float,
+                     width: float, height: float, text: str, author) -> dict:
+        def _do(app):
+            doc = app.GetDocument(path)
+            markup_id = doc.AddTextBox(page, x, y, width, height, text, author)
+            return {"markup_id": markup_id}
+        return self._call(_do)
+
+    def add_callout(self, path: str, page: int, x: float, y: float,
+                    text: str, author) -> dict:
+        def _do(app):
+            doc = app.GetDocument(path)
+            markup_id = doc.AddCallout(page, x, y, text, author)
+            return {"markup_id": markup_id}
+        return self._call(_do)
+
+    def add_stamp(self, path: str, page: int, stamp_name: str,
+                  x: float, y: float) -> dict:
+        def _do(app):
+            doc = app.GetDocument(path)
+            markup_id = doc.AddStamp(page, stamp_name, x, y)
+            return {"markup_id": markup_id}
+        return self._call(_do)
+
+    def delete_markup(self, path: str, markup_id: str) -> dict:
+        def _do(app):
+            doc = app.GetDocument(path)
+            doc.DeleteMarkup(markup_id)
+            return {"success": True}
+        return self._call(_do)
