@@ -1,0 +1,4 @@
+mcp>=1.0.0
+pywin32>=306
+pytest>=7.0
+pytest-mock>=3.0
