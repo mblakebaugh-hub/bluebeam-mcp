@@ -43,7 +43,8 @@ class TestDocumentRoundTrip:
 
         svc.set_layer_visibility(SAMPLE_PDF, "TestLayer", False)
         layers = svc.list_layers(SAMPLE_PDF)
-        layer = next(l for l in layers if l["name"] == "TestLayer")
+        layer = next((l for l in layers if l["name"] == "TestLayer"), None)
+        assert layer is not None, "TestLayer not found in layers"
         assert layer["visible"] is False
 
         svc.close_document(SAMPLE_PDF)
