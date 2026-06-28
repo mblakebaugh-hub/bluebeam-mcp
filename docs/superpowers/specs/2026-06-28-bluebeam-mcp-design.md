@@ -72,7 +72,7 @@ All tool names are prefixed `bb_` to avoid collisions with other MCP servers.
 
 | Tool | Input | Output |
 |------|-------|--------|
-| `bb_open_document` | `path: str` | `{handle: str, page_count: int}` |
+| `bb_open_document` | `path: str` | `{page_count: int}` |
 | `bb_close_document` | `path: str` | `{success: bool}` |
 | `bb_save_document` | `path: str \| null` (null = active doc) | `{success: bool}` |
 | `bb_list_open_documents` | *(none)* | `[{path: str, page_count: int}]` |
@@ -85,6 +85,8 @@ All tool names are prefixed `bb_` to avoid collisions with other MCP servers.
 | `bb_add_text_box` | `path: str`, `page: int`, `x: float`, `y: float`, `width: float`, `height: float`, `text: str`, `author: str \| null` | `{markup_id: str}` |
 | `bb_add_callout` | `path: str`, `page: int`, `x: float`, `y: float`, `text: str`, `author: str \| null` | `{markup_id: str}` |
 | `bb_add_stamp` | `path: str`, `page: int`, `stamp_name: str`, `x: float`, `y: float` | `{markup_id: str}` |
+
+> **Coordinates:** All `x`, `y`, `width`, `height` values are in **PDF points** (1/72 inch), measured from the **bottom-left corner** of the page — the standard PDF coordinate system. `stamp_name` must exactly match a stamp already present in Revu's stamp library; use `bb_list_markups` with type filter or check Revu's Stamps panel for available names.
 | `bb_delete_markup` | `path: str`, `markup_id: str` | `{success: bool}` |
 
 **MarkupRecord schema:**
