@@ -1,3 +1,4 @@
+import os
 import pywintypes
 import win32com.client
 
@@ -45,3 +46,24 @@ class BluebeamService:
                         "Lost connection to Revu — please reopen it"
                     )
         return self._com.run(_do)
+
+    def open_document(self, path: str) -> dict:
+        if not os.path.exists(path):
+            raise BluebeamDocumentError(f"File not found: {path}")
+        return self._call(lambda app: {"page_count": app.Open(path).PageCount})
+
+    def close_document(self, path: str) -> dict:
+        self._call(lambda app: app.Close(path))
+        return {"success": True}
+
+    def save_document(self, path) -> dict:
+        self._call(lambda app: app.Save(path))
+        return {"success": True}
+
+    def list_open_documents(self) -> list:
+        return self._call(
+            lambda app: [
+                {"path": doc.FilePath, "page_count": doc.PageCount}
+                for doc in app.Documents
+            ]
+        )
