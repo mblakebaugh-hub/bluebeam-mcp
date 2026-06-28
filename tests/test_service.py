@@ -216,3 +216,24 @@ def test_add_layer(service, mock_app):
 
     doc.AddLayer.assert_called_once_with("New Layer")
     assert result == {"success": True}
+
+
+def test_flatten_document(service, mock_app):
+    doc = MagicMock()
+    mock_app.GetDocument.return_value = doc
+
+    result = service.flatten_document("C:\\a.pdf")
+
+    doc.Flatten.assert_called_once()
+    assert result == {"success": True}
+
+
+def test_export_markup_summary(service, mock_app):
+    doc = MagicMock()
+    doc.ExportMarkupSummary.return_value = 12
+    mock_app.GetDocument.return_value = doc
+
+    result = service.export_markup_summary("C:\\a.pdf", "C:\\summary.csv")
+
+    doc.ExportMarkupSummary.assert_called_once_with("C:\\summary.csv")
+    assert result == {"rows_written": 12}

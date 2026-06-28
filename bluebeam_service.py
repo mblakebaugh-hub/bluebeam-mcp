@@ -142,3 +142,15 @@ class BluebeamService:
             app.GetDocument(path).AddLayer(layer_name)
             return {"success": True}
         return self._call(_do)
+
+    def flatten_document(self, path: str) -> dict:
+        def _do(app):
+            app.GetDocument(path).Flatten()
+            return {"success": True}
+        return self._call(_do)
+
+    def export_markup_summary(self, path: str, output_path: str) -> dict:
+        def _do(app):
+            rows = app.GetDocument(path).ExportMarkupSummary(output_path)
+            return {"rows_written": rows}
+        return self._call(_do)
