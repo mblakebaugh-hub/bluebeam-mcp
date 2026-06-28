@@ -17,7 +17,7 @@ def register_markup_tools(mcp, service):
     def bb_add_text_box(path: str, page: int, x: float, y: float,
                         width: float, height: float, text: str,
                         author: str = None) -> dict:
-        """Add a text box markup. x, y, width, height in PDF points (1/72 in), origin bottom-left."""
+        """Add a text box markup. x, y, width, height in PDF points (1/72 in), origin top-left."""
         try:
             return service.add_text_box(path, page, x, y, width, height, text, author)
         except (BluebeamNotAvailableError, BluebeamDocumentError) as e:
@@ -26,7 +26,7 @@ def register_markup_tools(mcp, service):
     @mcp.tool()
     def bb_add_callout(path: str, page: int, x: float, y: float,
                        text: str, author: str = None) -> dict:
-        """Add a callout (leader line + text box). x, y in PDF points, origin bottom-left."""
+        """Add a callout (leader line + text box). x, y in PDF points, origin top-left."""
         try:
             return service.add_callout(path, page, x, y, text, author)
         except (BluebeamNotAvailableError, BluebeamDocumentError) as e:
@@ -35,7 +35,7 @@ def register_markup_tools(mcp, service):
     @mcp.tool()
     def bb_add_stamp(path: str, page: int, stamp_name: str,
                      x: float, y: float) -> dict:
-        """Apply a named stamp. stamp_name must match a stamp in Revu's stamp library."""
+        """Apply a stamp. stamp_name: Approved, Draft, Final, Confidential, VOID, etc."""
         try:
             return service.add_stamp(path, page, stamp_name, x, y)
         except (BluebeamNotAvailableError, BluebeamDocumentError) as e:

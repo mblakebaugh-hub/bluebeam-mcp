@@ -12,7 +12,7 @@ def register_document_tools(mcp, service):
 
     @mcp.tool()
     def bb_close_document(path: str) -> dict:
-        """Close an open PDF in Bluebeam Revu."""
+        """Acknowledge close request. Note: cannot force-close a file in Revu via API."""
         try:
             return service.close_document(path)
         except (BluebeamNotAvailableError, BluebeamDocumentError) as e:
@@ -28,7 +28,7 @@ def register_document_tools(mcp, service):
 
     @mcp.tool()
     def bb_list_open_documents() -> list:
-        """List all PDFs currently open in Bluebeam Revu."""
+        """List open PDFs. Note: returns empty — Revu.Launcher does not expose a document list."""
         try:
             return service.list_open_documents()
         except BluebeamNotAvailableError as e:

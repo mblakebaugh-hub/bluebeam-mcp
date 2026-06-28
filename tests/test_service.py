@@ -5,9 +5,11 @@ from exceptions import BluebeamNotAvailableError, BluebeamDocumentError
 from tests.conftest import SyncDispatcher
 
 
-def test_uses_injected_app(service, mock_app):
-    app = service._call(lambda a: a)
-    assert app is mock_app
+# --- Launcher / connection tests ---
+
+def test_uses_injected_launcher(service, mock_launcher):
+    launcher = service._call_launcher(lambda l: l)
+    assert launcher is mock_launcher
 
 
 def test_connect_attaches_to_running_revu():
@@ -15,8 +17,8 @@ def test_connect_attaches_to_running_revu():
     mock_revu = MagicMock()
     with patch("bluebeam_service.win32com.client.GetActiveObject", return_value=mock_revu):
         svc = BluebeamService(_com=SyncDispatcher())
-        app = svc._call(lambda a: a)
-    assert app is mock_revu
+        launcher = svc._call_launcher(lambda l: l)
+    assert launcher is mock_revu
 
 
 def test_connect_launches_revu_when_not_running():
@@ -27,8 +29,8 @@ def test_connect_launches_revu_when_not_running():
                side_effect=pywintypes.com_error()), \
          patch("bluebeam_service.win32com.client.Dispatch", return_value=mock_revu):
         svc = BluebeamService(_com=SyncDispatcher())
-        app = svc._call(lambda a: a)
-    assert app is mock_revu
+        launcher = svc._call_launcher(lambda l: l)
+    assert launcher is mock_revu
 
 
 def test_raises_when_revu_unavailable():
@@ -40,242 +42,187 @@ def test_raises_when_revu_unavailable():
                side_effect=pywintypes.com_error()):
         svc = BluebeamService(_com=SyncDispatcher())
         with pytest.raises(BluebeamNotAvailableError):
-            svc._call(lambda a: a)
+            svc._call_launcher(lambda l: l)
 
+
+def test_call_launcher_retries_on_com_error_and_succeeds(mock_launcher):
+    import pywintypes
+    from bluebeam_service import BluebeamService
+    call_count = {"n": 0}
+
+    def flaky_fn(launcher):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            raise pywintypes.com_error()
+        return "ok"
+
+    svc = BluebeamService(_launcher=mock_launcher, _com=SyncDispatcher())
+    result = svc._call_launcher(flaky_fn)
+    assert result == "ok"
+    assert call_count["n"] == 2
+
+
+def test_call_launcher_raises_not_available_after_two_com_errors():
+    import pywintypes
+    from bluebeam_service import BluebeamService
+
+    def always_fails(launcher):
+        raise pywintypes.com_error()
+
+    svc = BluebeamService(_launcher=MagicMock(), _com=SyncDispatcher())
+    with pytest.raises(BluebeamNotAvailableError, match="Lost connection"):
+        svc._call_launcher(always_fails)
+
+
+# --- Document method tests ---
 
 def test_open_document_raises_if_file_missing(service):
     with pytest.raises(BluebeamDocumentError, match="File not found"):
         service.open_document("C:\\does_not_exist.pdf")
 
 
-def test_open_document_calls_com_open(service, mock_app, tmp_path):
-    pdf = tmp_path / "test.pdf"
-    pdf.write_bytes(b"%PDF-1.4")
-    mock_doc = MagicMock()
-    mock_doc.PageCount = 5
-    mock_app.Open.return_value = mock_doc
-
-    result = service.open_document(str(pdf))
-
-    mock_app.Open.assert_called_once_with(str(pdf))
-    assert result == {"page_count": 5}
+def test_open_document_opens_in_revu_and_returns_page_count(service, mock_launcher, sample_pdf):
+    result = service.open_document(sample_pdf)
+    mock_launcher.EditDocument.assert_called_once_with(sample_pdf)
+    assert result == {"page_count": 1}
 
 
-def test_close_document(service, mock_app):
-    result = service.close_document("C:\\some.pdf")
-    mock_app.Close.assert_called_once_with("C:\\some.pdf")
+def test_close_document_returns_success(service):
+    result = service.close_document("C:\\any.pdf")
     assert result == {"success": True}
 
 
-def test_save_document_with_path(service, mock_app):
-    result = service.save_document("C:\\some.pdf")
-    mock_app.Save.assert_called_once_with("C:\\some.pdf")
+def test_save_document_with_path(service, sample_pdf):
+    result = service.save_document(sample_pdf)
     assert result == {"success": True}
 
 
-def test_save_document_active(service, mock_app):
+def test_save_document_none_returns_success(service):
     result = service.save_document(None)
-    mock_app.Save.assert_called_once_with(None)
     assert result == {"success": True}
 
 
-def test_list_open_documents(service, mock_app):
-    doc1 = MagicMock(FilePath="C:\\a.pdf", PageCount=3)
-    doc2 = MagicMock(FilePath="C:\\b.pdf", PageCount=7)
-    mock_app.Documents = [doc1, doc2]
-
-    result = service.list_open_documents()
-
-    assert result == [
-        {"path": "C:\\a.pdf", "page_count": 3},
-        {"path": "C:\\b.pdf", "page_count": 7},
-    ]
+def test_list_open_documents_returns_empty(service):
+    assert service.list_open_documents() == []
 
 
-def _make_markup(id="m1", type="TextBox", page=1, author="Alice",
-                 subject="", comments="Hello", date="2026-06-28",
-                 x=10.0, y=20.0):
-    m = MagicMock()
-    m.ID = id
-    m.Type = type
-    m.PageNumber = page
-    m.Author = author
-    m.Subject = subject
-    m.Comments = comments
-    m.Date = date
-    m.Rect = MagicMock(X=x, Y=y)
-    return m
+# --- Markup method tests ---
+
+def test_list_markups_empty(service, sample_pdf):
+    result = service.list_markups(sample_pdf)
+    assert result == []
 
 
-def test_list_markups_all_pages(service, mock_app):
-    doc = MagicMock()
-    doc.Markups = [_make_markup("m1", page=1), _make_markup("m2", page=2)]
-    mock_app.GetDocument.return_value = doc
-
-    result = service.list_markups("C:\\a.pdf", page=None)
-
-    assert len(result) == 2
-    assert result[0]["id"] == "m1"
-    assert result[1]["id"] == "m2"
-
-
-def test_list_markups_filter_page(service, mock_app):
-    doc = MagicMock()
-    doc.Markups = [_make_markup("m1", page=1), _make_markup("m2", page=2)]
-    mock_app.GetDocument.return_value = doc
-
-    result = service.list_markups("C:\\a.pdf", page=1)
-
+def test_list_markups_all_pages(service, sample_pdf):
+    service.add_text_box(sample_pdf, 1, 10.0, 10.0, 100.0, 30.0, "Page 1 note", None)
+    result = service.list_markups(sample_pdf)
     assert len(result) == 1
-    assert result[0]["id"] == "m1"
+    assert result[0]["page"] == 1
 
 
-def test_add_text_box(service, mock_app):
-    doc = MagicMock()
-    doc.AddTextBox.return_value = "markup-123"
-    mock_app.GetDocument.return_value = doc
-
-    result = service.add_text_box("C:\\a.pdf", 1, 10.0, 20.0, 100.0, 50.0, "Note", "Alice")
-
-    doc.AddTextBox.assert_called_once_with(1, 10.0, 20.0, 100.0, 50.0, "Note", "Alice")
-    assert result == {"markup_id": "markup-123"}
-
-
-def test_add_callout(service, mock_app):
-    doc = MagicMock()
-    doc.AddCallout.return_value = "markup-456"
-    mock_app.GetDocument.return_value = doc
-
-    result = service.add_callout("C:\\a.pdf", 1, 10.0, 20.0, "See this", None)
-
-    doc.AddCallout.assert_called_once_with(1, 10.0, 20.0, "See this", None)
-    assert result == {"markup_id": "markup-456"}
+def test_list_markups_filter_page(service, tmp_path):
+    import fitz
+    path = str(tmp_path / "two_pages.pdf")
+    doc = fitz.open()
+    doc.new_page()
+    doc.new_page()
+    doc.save(path)
+    doc.close()
+    service.add_text_box(path, 1, 10.0, 10.0, 100.0, 30.0, "Page 1 note", None)
+    assert service.list_markups(path, page=1) != []
+    assert service.list_markups(path, page=2) == []
 
 
-def test_add_stamp(service, mock_app):
-    doc = MagicMock()
-    doc.AddStamp.return_value = "markup-789"
-    mock_app.GetDocument.return_value = doc
-
-    result = service.add_stamp("C:\\a.pdf", 1, "APPROVED", 50.0, 60.0)
-
-    doc.AddStamp.assert_called_once_with(1, "APPROVED", 50.0, 60.0)
-    assert result == {"markup_id": "markup-789"}
+def test_add_text_box_returns_markup_id(service, sample_pdf):
+    result = service.add_text_box(sample_pdf, 1, 50.0, 50.0, 100.0, 30.0, "Hello", "Alice")
+    assert "markup_id" in result
+    markups = service.list_markups(sample_pdf)
+    assert len(markups) == 1
+    assert markups[0]["id"] == result["markup_id"]
+    assert markups[0]["author"] == "Alice"
 
 
-def test_delete_markup(service, mock_app):
-    doc = MagicMock()
-    mock_app.GetDocument.return_value = doc
+def test_add_callout_returns_markup_id(service, sample_pdf):
+    result = service.add_callout(sample_pdf, 1, 50.0, 50.0, "See here", "Bob")
+    assert "markup_id" in result
+    markups = service.list_markups(sample_pdf)
+    assert len(markups) == 1
+    assert markups[0]["id"] == result["markup_id"]
 
-    result = service.delete_markup("C:\\a.pdf", "markup-123")
 
-    doc.DeleteMarkup.assert_called_once_with("markup-123")
+def test_add_stamp_returns_markup_id(service, sample_pdf):
+    result = service.add_stamp(sample_pdf, 1, "APPROVED", 50.0, 50.0)
+    assert "markup_id" in result
+    markups = service.list_markups(sample_pdf)
+    assert len(markups) == 1
+    assert markups[0]["id"] == result["markup_id"]
+
+
+def test_delete_markup(service, sample_pdf):
+    add = service.add_text_box(sample_pdf, 1, 10.0, 10.0, 100.0, 30.0, "To delete", None)
+    markup_id = add["markup_id"]
+
+    result = service.delete_markup(sample_pdf, markup_id)
     assert result == {"success": True}
+    assert service.list_markups(sample_pdf) == []
 
 
-def test_list_layers(service, mock_app):
-    doc = MagicMock()
-    doc.Layers = [MagicMock(Name="Electrical", Visible=True),
-                  MagicMock(Name="Plumbing", Visible=False)]
-    mock_app.GetDocument.return_value = doc
-
-    result = service.list_layers("C:\\a.pdf")
-
-    assert result == [
-        {"name": "Electrical", "visible": True},
-        {"name": "Plumbing", "visible": False},
-    ]
+def test_delete_markup_raises_if_not_found(service, sample_pdf):
+    with pytest.raises(BluebeamDocumentError, match="Markup not found"):
+        service.delete_markup(sample_pdf, "99999")
 
 
-def test_set_layer_visibility(service, mock_app):
-    doc = MagicMock()
-    layer = MagicMock(Name="Electrical", Visible=False)
-    doc.Layers = [layer]
-    mock_app.GetDocument.return_value = doc
+# --- Layer method tests ---
 
-    result = service.set_layer_visibility("C:\\a.pdf", "Electrical", True)
+def test_list_layers_empty(service, sample_pdf):
+    assert service.list_layers(sample_pdf) == []
 
-    assert layer.Visible is True
+
+def test_add_layer(service, sample_pdf):
+    result = service.add_layer(sample_pdf, "Electrical")
     assert result == {"success": True}
+    layers = service.list_layers(sample_pdf)
+    assert any(l["name"] == "Electrical" for l in layers)
 
 
-def test_set_layer_visibility_raises_if_not_found(service, mock_app):
-    doc = MagicMock()
-    doc.Layers = [MagicMock(Name="Electrical")]
-    mock_app.GetDocument.return_value = doc
-
-    with pytest.raises(BluebeamDocumentError, match="Layer not found: Plumbing"):
-        service.set_layer_visibility("C:\\a.pdf", "Plumbing", True)
-
-
-def test_add_layer(service, mock_app):
-    doc = MagicMock()
-    mock_app.GetDocument.return_value = doc
-
-    result = service.add_layer("C:\\a.pdf", "New Layer")
-
-    doc.AddLayer.assert_called_once_with("New Layer")
+def test_set_layer_visibility(service, sample_pdf):
+    service.add_layer(sample_pdf, "Plumbing")
+    result = service.set_layer_visibility(sample_pdf, "Plumbing", False)
     assert result == {"success": True}
+    layers = service.list_layers(sample_pdf)
+    layer = next(l for l in layers if l["name"] == "Plumbing")
+    assert layer["visible"] is False
 
 
-def test_flatten_document(service, mock_app):
-    doc = MagicMock()
-    mock_app.GetDocument.return_value = doc
+def test_set_layer_visibility_raises_if_not_found(service, sample_pdf):
+    with pytest.raises(BluebeamDocumentError, match="Layer not found: Ghost"):
+        service.set_layer_visibility(sample_pdf, "Ghost", True)
 
-    result = service.flatten_document("C:\\a.pdf")
 
-    doc.Flatten.assert_called_once()
+# --- Workflow method tests ---
+
+def test_flatten_document_removes_annotations(service, sample_pdf):
+    service.add_text_box(sample_pdf, 1, 10.0, 10.0, 100.0, 30.0, "Will be removed", None)
+    assert len(service.list_markups(sample_pdf)) == 1
+
+    result = service.flatten_document(sample_pdf)
     assert result == {"success": True}
+    assert service.list_markups(sample_pdf) == []
 
 
-def test_export_markup_summary(service, mock_app):
-    doc = MagicMock()
-    doc.ExportMarkupSummary.return_value = 12
-    mock_app.GetDocument.return_value = doc
+def test_export_markup_summary(service, sample_pdf, tmp_path):
+    service.add_text_box(sample_pdf, 1, 10.0, 10.0, 100.0, 30.0, "Note", "Alice")
+    output = str(tmp_path / "summary.csv")
 
-    result = service.export_markup_summary("C:\\a.pdf", "C:\\summary.csv")
+    result = service.export_markup_summary(sample_pdf, output)
 
-    doc.ExportMarkupSummary.assert_called_once_with("C:\\summary.csv")
-    assert result == {"rows_written": 12}
+    assert result == {"rows_written": 1}
+    assert os.path.exists(output)
+    with open(output) as f:
+        lines = f.readlines()
+    assert len(lines) == 2  # header + 1 row
 
 
-def test_export_markup_summary_raises_if_output_dir_missing(service):
+def test_export_markup_summary_raises_if_output_dir_missing(service, sample_pdf):
     with pytest.raises(BluebeamDocumentError, match="Output directory does not exist"):
-        service.export_markup_summary("C:\\a.pdf", "C:\\nonexistent_dir\\out.csv")
-
-
-def test_call_retries_on_com_error_and_succeeds(mock_app):
-    """Verify _call retries fn after a COM error and returns result on second attempt."""
-    import pywintypes
-    from bluebeam_service import BluebeamService
-    from tests.conftest import SyncDispatcher
-
-    # fn raises com_error on first call, returns "ok" on second
-    call_count = {"n": 0}
-    def flaky_fn(app):
-        call_count["n"] += 1
-        if call_count["n"] == 1:
-            raise pywintypes.com_error()
-        return "ok"
-
-    svc = BluebeamService(_app=mock_app, _com=SyncDispatcher())
-    result = svc._call(flaky_fn)
-    assert result == "ok"
-    assert call_count["n"] == 2
-
-
-def test_call_raises_not_available_after_two_com_errors():
-    """Verify _call raises BluebeamNotAvailableError when fn fails twice."""
-    import pywintypes
-    from bluebeam_service import BluebeamService
-    from tests.conftest import SyncDispatcher
-    from exceptions import BluebeamNotAvailableError
-    from unittest.mock import MagicMock
-
-    def always_fails(app):
-        raise pywintypes.com_error()
-
-    mock = MagicMock()
-    svc = BluebeamService(_app=mock, _com=SyncDispatcher())
-    with pytest.raises(BluebeamNotAvailableError, match="Lost connection"):
-        svc._call(always_fails)
+        service.export_markup_summary(sample_pdf, "C:\\nonexistent_dir\\out.csv")
