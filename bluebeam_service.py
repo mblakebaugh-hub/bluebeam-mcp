@@ -118,3 +118,27 @@ class BluebeamService:
             doc.DeleteMarkup(markup_id)
             return {"success": True}
         return self._call(_do)
+
+    def list_layers(self, path: str) -> list:
+        return self._call(
+            lambda app: [
+                {"name": layer.Name, "visible": layer.Visible}
+                for layer in app.GetDocument(path).Layers
+            ]
+        )
+
+    def set_layer_visibility(self, path: str, layer_name: str, visible: bool) -> dict:
+        def _do(app):
+            doc = app.GetDocument(path)
+            for layer in doc.Layers:
+                if layer.Name == layer_name:
+                    layer.Visible = visible
+                    return {"success": True}
+            raise BluebeamDocumentError(f"Layer not found: {layer_name}")
+        return self._call(_do)
+
+    def add_layer(self, path: str, layer_name: str) -> dict:
+        def _do(app):
+            app.GetDocument(path).AddLayer(layer_name)
+            return {"success": True}
+        return self._call(_do)

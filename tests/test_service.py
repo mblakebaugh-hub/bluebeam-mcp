@@ -171,3 +171,48 @@ def test_delete_markup(service, mock_app):
 
     doc.DeleteMarkup.assert_called_once_with("markup-123")
     assert result == {"success": True}
+
+
+def test_list_layers(service, mock_app):
+    doc = MagicMock()
+    doc.Layers = [MagicMock(Name="Electrical", Visible=True),
+                  MagicMock(Name="Plumbing", Visible=False)]
+    mock_app.GetDocument.return_value = doc
+
+    result = service.list_layers("C:\\a.pdf")
+
+    assert result == [
+        {"name": "Electrical", "visible": True},
+        {"name": "Plumbing", "visible": False},
+    ]
+
+
+def test_set_layer_visibility(service, mock_app):
+    doc = MagicMock()
+    layer = MagicMock(Name="Electrical", Visible=False)
+    doc.Layers = [layer]
+    mock_app.GetDocument.return_value = doc
+
+    result = service.set_layer_visibility("C:\\a.pdf", "Electrical", True)
+
+    assert layer.Visible is True
+    assert result == {"success": True}
+
+
+def test_set_layer_visibility_raises_if_not_found(service, mock_app):
+    doc = MagicMock()
+    doc.Layers = [MagicMock(Name="Electrical")]
+    mock_app.GetDocument.return_value = doc
+
+    with pytest.raises(BluebeamDocumentError, match="Layer not found: Plumbing"):
+        service.set_layer_visibility("C:\\a.pdf", "Plumbing", True)
+
+
+def test_add_layer(service, mock_app):
+    doc = MagicMock()
+    mock_app.GetDocument.return_value = doc
+
+    result = service.add_layer("C:\\a.pdf", "New Layer")
+
+    doc.AddLayer.assert_called_once_with("New Layer")
+    assert result == {"success": True}
