@@ -1,9 +1,11 @@
+from typing import Optional
+
 from exceptions import BluebeamDocumentError, BluebeamNotAvailableError
 
 
 def register_markup_tools(mcp, service):
     @mcp.tool()
-    def bb_list_markups(path: str, page: int = None) -> list:
+    def bb_list_markups(path: str, page: Optional[int] = None) -> list:
         """List markups in a document. Omit page to list all pages.
         Returns list of {id, type, page, author, subject, comment, date, x, y}."""
         try:

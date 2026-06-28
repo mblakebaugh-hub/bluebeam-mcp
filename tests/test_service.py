@@ -237,3 +237,45 @@ def test_export_markup_summary(service, mock_app):
 
     doc.ExportMarkupSummary.assert_called_once_with("C:\\summary.csv")
     assert result == {"rows_written": 12}
+
+
+def test_export_markup_summary_raises_if_output_dir_missing(service):
+    with pytest.raises(BluebeamDocumentError, match="Output directory does not exist"):
+        service.export_markup_summary("C:\\a.pdf", "C:\\nonexistent_dir\\out.csv")
+
+
+def test_call_retries_on_com_error_and_succeeds(mock_app):
+    """Verify _call retries fn after a COM error and returns result on second attempt."""
+    import pywintypes
+    from bluebeam_service import BluebeamService
+    from tests.conftest import SyncDispatcher
+
+    # fn raises com_error on first call, returns "ok" on second
+    call_count = {"n": 0}
+    def flaky_fn(app):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            raise pywintypes.com_error()
+        return "ok"
+
+    svc = BluebeamService(_app=mock_app, _com=SyncDispatcher())
+    result = svc._call(flaky_fn)
+    assert result == "ok"
+    assert call_count["n"] == 2
+
+
+def test_call_raises_not_available_after_two_com_errors():
+    """Verify _call raises BluebeamNotAvailableError when fn fails twice."""
+    import pywintypes
+    from bluebeam_service import BluebeamService
+    from tests.conftest import SyncDispatcher
+    from exceptions import BluebeamNotAvailableError
+    from unittest.mock import MagicMock
+
+    def always_fails(app):
+        raise pywintypes.com_error()
+
+    mock = MagicMock()
+    svc = BluebeamService(_app=mock, _com=SyncDispatcher())
+    with pytest.raises(BluebeamNotAvailableError, match="Lost connection"):
+        svc._call(always_fails)

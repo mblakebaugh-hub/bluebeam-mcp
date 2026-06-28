@@ -150,6 +150,9 @@ class BluebeamService:
         return self._call(_do)
 
     def export_markup_summary(self, path: str, output_path: str) -> dict:
+        output_dir = os.path.dirname(output_path)
+        if output_dir and not os.path.isdir(output_dir):
+            raise BluebeamDocumentError(f"Output directory does not exist: {output_dir}")
         def _do(app):
             rows = app.GetDocument(path).ExportMarkupSummary(output_path)
             return {"rows_written": rows}

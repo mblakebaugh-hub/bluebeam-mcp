@@ -29,7 +29,13 @@ class COMThread:
             pythoncom.CoUninitialize()
 
     def run(self, fn, timeout=30):
-        """Submit fn to the COM thread and block until it returns."""
+        """Submit fn to the COM thread and block until it returns.
+
+        NOTE: On timeout, the caller gets TimeoutError but the COM thread
+        continues running fn. If Revu hangs (e.g. on large Flatten/Export),
+        all subsequent calls will queue behind the hung call until it returns
+        or the server process is restarted.
+        """
         future = Future()
         self._queue.put((fn, future))
         return future.result(timeout=timeout)
